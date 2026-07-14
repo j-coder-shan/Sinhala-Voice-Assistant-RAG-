@@ -11,9 +11,10 @@ interface Source {
 
 interface SourcesPanelProps {
   sources: Source[];
+  compact?: boolean;  // Phase 3: compact inline mode for chat turn cards
 }
 
-export default function SourcesPanel({ sources }: SourcesPanelProps) {
+export default function SourcesPanel({ sources, compact = false }: SourcesPanelProps) {
   if (!sources || sources.length === 0) return null;
 
   // De-duplicate sources by title
@@ -24,6 +25,29 @@ export default function SourcesPanel({ sources }: SourcesPanelProps) {
     }
     return acc;
   }, []);
+
+  // Compact variant: small inline list for inside chat turn cards
+  if (compact) {
+    return (
+      <div className="space-y-1.5">
+        {uniqueSources.map((source, index) => (
+          <div
+            key={index}
+            className="flex items-start gap-2 px-3 py-2 rounded-xl bg-zinc-950/50 border border-zinc-800/40 text-xs"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-violet-400 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-zinc-300 font-medium line-clamp-1">{source.title}</p>
+              <p className="text-zinc-500 mt-0.5">
+                {source.source === "NSINA" ? "NSINA News" : source.source === "sinhala_wikipedia" ? "Wikipedia" : source.source}
+                {source.published_date && ` · ${source.published_date}`}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-2xl bg-zinc-900/40 border border-zinc-800/40 rounded-3xl p-6 backdrop-blur-xl shadow-xl space-y-4">

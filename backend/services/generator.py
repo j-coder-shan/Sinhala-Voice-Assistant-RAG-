@@ -55,6 +55,7 @@ class GeneratorService:
         question: str,
         retrieved_chunks: list[str],
         has_relevant_results: bool,
+        conversation_history: list | None = None,
     ) -> str:
         """
         Generate a grounded Sinhala answer.
@@ -63,6 +64,10 @@ class GeneratorService:
             question: The user's Sinhala question (transcript or typed)
             retrieved_chunks: Top-k relevant corpus chunks
             has_relevant_results: If False, returns fixed no-info response
+            conversation_history: Optional list of prior ConversationTurn objects
+                                  (Phase 3 / FR-11).  When provided, prior Q&A
+                                  pairs are injected into the prompt so Gemini
+                                  can resolve coreferences across turns.
 
         Returns:
             Sinhala answer text string
@@ -77,11 +82,29 @@ class GeneratorService:
             for i, chunk in enumerate(retrieved_chunks)
         )
 
+        # Build conversation history block (Phase 3 / FR-11)
+        # Limit to last 5 turns to keep token count bounded
+        history_block = ""
+        if conversation_history:
+            recent_turns = conversation_history[-5:]
+            history_lines = []
+            for i, turn in enumerate(recent_turns, 1):
+                q = getattr(turn, 'question', '')
+                a = getattr(turn, 'answer', '')
+                history_lines.append(f"[ප්‍රශ්නය {i}]: {q}")
+                history_lines.append(f"[පිළිතුර {i}]: {a}")
+            if history_lines:
+                history_block = (
+                    "\nකලින් සංවාද ඉතිහාසය (prior conversation history):\n"
+                    + "\n".join(history_lines)
+                    + "\n"
+                )
+
         prompt = f"""පහත සන්දර්භය ආශ්‍රිතව, ප්‍රශ්නයට සිංහල භාෂාවෙන් පිළිතුරු දෙන්න.
 
 සන්දර්භය:
 {context_block}
-
+{history_block}
 ප්‍රශ්නය: {question}
 
 සිංහල පිළිතුර:"""

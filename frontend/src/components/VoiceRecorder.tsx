@@ -11,10 +11,12 @@ interface VoiceRecorderProps {
     sources: any[];
     stt_confidence?: number;
     low_confidence_warning?: boolean;
+    session_id?: string;
   }) => void;
   onError: (error: string) => void;
   onStateChange: (state: "idle" | "recording" | "processing" | "playing") => void;
   currentState: "idle" | "recording" | "processing" | "playing";
+  sessionId?: string | null;  // Phase 3: pass session_id with audio upload
 }
 
 export default function VoiceRecorder({
@@ -22,6 +24,7 @@ export default function VoiceRecorder({
   onError,
   onStateChange,
   currentState,
+  sessionId,
 }: VoiceRecorderProps) {
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -171,6 +174,10 @@ export default function VoiceRecorder({
     onStateChange("processing");
     const formData = new FormData();
     formData.append("audio", audioBlob, "voice_query.webm");
+    // Phase 3: include session_id so backend continues the conversation
+    if (sessionId) {
+      formData.append("session_id", sessionId);
+    }
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 

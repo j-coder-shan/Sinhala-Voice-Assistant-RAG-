@@ -209,3 +209,121 @@ def test_is_offensive_heuristics():
     assert GeneratorService.is_offensive("patta ponna") is True
 
 
+# ---------------------------------------------------------------------------
+# Phase 3 — Session / multi-turn conversation tests (FR-11)
+# ---------------------------------------------------------------------------
+
+def test_session_create(client):
+    """POST /api/sessions should create a session and return a UUID session_id."""
+    resp = client.post("/api/sessions")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "session_id" in data
+    assert len(data["session_id"]) == 36  # UUID4 format
+
+
+def test_session_get_empty(client):
+    """GET /api/sessions/{id} for a fresh session should return empty turns list."""
+    # Create session first
+    create_resp = client.post("/api/sessions")
+    session_id = create_resp.json()["session_id"]
+
+    resp = client.get(f"/api/sessions/{session_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["session_id"] == session_id
+    assert data["turns"] == []
+
+
+def test_session_get_not_found(client):
+    """GET /api/sessions/{unknown} should return 404."""
+    resp = client.get("/api/sessions/00000000-0000-0000-0000-000000000000")
+    assert resp.status_code == 404
+
+
+def test_session_delete(client):
+    """DELETE /api/sessions/{id} should remove the session."""
+    create_resp = client.post("/api/sessions")
+    session_id = create_resp.json()["session_id"]
+
+    del_resp = client.delete(f"/api/sessions/{session_id}")
+    assert del_resp.status_code == 200
+    assert del_resp.json()["deleted"] is True
+
+    # Subsequent GET should return 404
+    get_resp = client.get(f"/api/sessions/{session_id}")
+    assert get_resp.status_code == 404
+
+
+def test_session_delete_not_found(client):
+    """DELETE /api/sessions/{unknown} should return 404."""
+    resp = client.delete("/api/sessions/00000000-0000-0000-0000-000000000000")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_text_query_returns_session_id():
+    """POST /api/text-query should echo back a session_id (FR-11)."""
+    mock_retrieval = {
+        "chunks": ["ශ්‍රී ලංකාවේ ජනාධිපති රනිල් වික්‍රමසිංහ."],
+        "sources": [{"title": "News article", "source": "NSINA", "published_date": "2024-01-01"}],
+        "distances": [0.2],
+        "has_relevant_results": True,
+        "corpus_empty": False,
+    }
+
+    with (
+        patch("routers.text_query.get_retriever_service") as mock_ret,
+        patch("routers.text_query.get_generator_service") as mock_gen,
+        patch("routers.text_query.get_tts_service") as mock_tts,
+    ):
+        mock_ret.return_value.retrieve.return_value = mock_retrieval
+        mock_gen.return_value.generate = AsyncMock(return_value="ශ්‍රී ලංකාවේ ජනාධිපති රනිල් වික්‍රමසිංහ.")
+        mock_gen.return_value.is_offensive.return_value = False
+        mock_tts.return_value.synthesize = AsyncMock(return_value="/audio/answer_test.mp3")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(
+                "/api/text-query",
+                json={"question": "ශ්‍රී ලංකාවේ ජනාධිපති කවුද?"},
+            )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "session_id" in data
+    assert data["session_id"] is not None
+    # UUID4 format
+    assert len(data["session_id"]) == 36
+
+
+def test_session_store_add_and_retrieve_turns():
+    """Unit test for SessionStore.add_turn / get_history logic."""
+    from services.session_store import SessionStore
+
+    store = SessionStore()
+    sid = store.create_session()
+
+    store.add_turn(sid, question="ශ්‍රී ලංකාවේ ජනාධිපති කවුද?", answer="රනිල් වික්‍රමසිංහ.")
+    turns = store.get_history(sid)
+
+    assert len(turns) == 1
+    assert turns[0].question == "ශ්‍රී ලංකාවේ ජනාධිපති කවුද?"
+    assert turns[0].answer == "රනිල් වික්‍රමසිංහ."
+
+
+def test_session_store_evicts_old_turns():
+    """SessionStore should cap history at MAX_TURNS_PER_SESSION (10)."""
+    from services.session_store import SessionStore, MAX_TURNS_PER_SESSION
+
+    store = SessionStore()
+    sid = store.create_session()
+
+    # Add more turns than the cap
+    for i in range(MAX_TURNS_PER_SESSION + 5):
+        store.add_turn(sid, question=f"Q{i}", answer=f"A{i}")
+
+    turns = store.get_history(sid)
+    assert len(turns) == MAX_TURNS_PER_SESSION
+    # Oldest should have been evicted — latest turn should be the last one added
+    assert turns[-1].question == f"Q{MAX_TURNS_PER_SESSION + 4}"

@@ -21,7 +21,7 @@ os.makedirs("audio_output", exist_ok=True)
 
 load_dotenv()
 
-from routers import voice_query, text_query, corpus
+from routers import voice_query, text_query, corpus, sessions
 
 
 @asynccontextmanager
@@ -56,9 +56,10 @@ app = FastAPI(
     title="Sinhala Voice Assistant API",
     description=(
         "RAG-powered voice assistant for Sinhala language. "
-        "Supports voice and text input, returns grounded Sinhala answers with source citations."
+        "Supports voice and text input, returns grounded Sinhala answers with source citations. "
+        "Phase 3: multi-turn conversation sessions (FR-11)."
     ),
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -82,6 +83,7 @@ app.mount("/audio", StaticFiles(directory="audio_output"), name="audio")
 app.include_router(voice_query.router, prefix="/api")
 app.include_router(text_query.router, prefix="/api")
 app.include_router(corpus.router, prefix="/api/corpus")
+app.include_router(sessions.router, prefix="/api")  # Phase 3: multi-turn sessions (FR-11)
 
 
 @app.get("/health")

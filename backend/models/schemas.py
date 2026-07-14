@@ -55,6 +55,7 @@ class Turn(BaseModel):
 
 class TextQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
+    session_id: Optional[str] = None  # FR-11: multi-turn session ID
 
 
 class VoiceQueryResponse(BaseModel):
@@ -68,6 +69,7 @@ class VoiceQueryResponse(BaseModel):
     sources: list[SourceCitation]
     stt_confidence: Optional[float] = None
     low_confidence_warning: bool = False  # True if stt_confidence < 0.4
+    session_id: Optional[str] = None     # FR-11: echoed back so frontend persists it
 
 
 class TextQueryResponse(BaseModel):
@@ -76,6 +78,7 @@ class TextQueryResponse(BaseModel):
     answer_audio_url: str
     sources: list[SourceCitation]
     transliterated_question: Optional[str] = None
+    session_id: Optional[str] = None  # FR-11: echoed back so frontend persists it
 
 
 class CorpusStatusResponse(BaseModel):
@@ -88,3 +91,23 @@ class CorpusRefreshResponse(BaseModel):
     ingested_count: int
     chunk_count: int
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Session / conversation history (Phase 3 — FR-11)
+# ---------------------------------------------------------------------------
+
+class ConversationTurnSchema(BaseModel):
+    """One Q&A exchange, as returned by the sessions API."""
+    question: str
+    answer: str
+    timestamp: float
+
+
+class SessionCreateResponse(BaseModel):
+    session_id: str
+
+
+class ConversationHistoryResponse(BaseModel):
+    session_id: str
+    turns: list[ConversationTurnSchema]
